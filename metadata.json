@@ -1,0 +1,8 @@
+{
+  "name": "Calendrier FFBC - Abonnement",
+  "description": "Abonnement et générateur personnalisé de calendriers iCalendar (.ics) pour les randonnées FFBC (Route, Gravel, Marche, VTT). Compatible iPhone, Android, Google Calendar et Outlook.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
