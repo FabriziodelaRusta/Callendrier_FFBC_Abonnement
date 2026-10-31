@@ -30,13 +30,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Installer les dépendances
-        run: npm ci || npm install
+        run: npm install --legacy-peer-deps
 
       - name: Compiler le projet pour GitHub Pages
-        run: npm run build
+        run: npm run build:static
 
       - name: Configurer GitHub Pages
         uses: actions/configure-pages@v5

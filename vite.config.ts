@@ -1,11 +1,14 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(() => {
   return {
-    base: './', // Permet le bon chargement des assets sur GitHub Pages (quel que soit le sous-dossier)
+    base: './', // Permet le bon chargement des assets sur GitHub Pages
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && tsx scripts/generate-static-feeds.js",
+    "build": "vite build",
+    "build:static": "vite build && tsx scripts/generate-static-feeds.js",
     "preview": "vite preview",
     "start": "tsx server.ts",
     "clean": "rm -rf dist server.js",
