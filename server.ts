@@ -120,10 +120,12 @@ app.get('/api/input-files', async (_req: Request, res: Response) => {
 
       for (const f of files) {
         if (f.type !== 'file') continue;
+        if (!f.name.toLowerCase().endsWith('.ics')) continue;
+
         const nameLower = f.name.toLowerCase();
 
-        let matchedCategory: InputGitHubFile['matchedCategory'] | null = null;
-        let matchedLabel = '';
+        let matchedCategory: InputGitHubFile['matchedCategory'] = 'other';
+        let matchedLabel = 'Calendrier FFBC';
         let matchedProvince: string | undefined;
 
         if (nameLower.includes('route')) {
@@ -146,19 +148,17 @@ app.get('/api/input-files', async (_req: Request, res: Response) => {
           }
         }
 
-        if (matchedCategory) {
-          matchingFiles.push({
-            name: f.name,
-            path: f.path,
-            size: f.size,
-            download_url: f.download_url,
-            html_url: f.html_url,
-            type: f.type,
-            matchedCategory,
-            matchedLabel,
-            province: matchedProvince,
-          });
-        }
+        matchingFiles.push({
+          name: f.name,
+          path: f.path,
+          size: f.size,
+          download_url: f.download_url,
+          html_url: f.html_url,
+          type: f.type,
+          matchedCategory,
+          matchedLabel,
+          province: matchedProvince,
+        });
       }
 
       return res.json({

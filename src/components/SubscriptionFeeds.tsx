@@ -43,10 +43,12 @@ export const SubscriptionFeeds: React.FC<SubscriptionFeedsProps> = () => {
 
         for (const f of files) {
           if (f.type !== 'file') continue;
+          if (!f.name.toLowerCase().endsWith('.ics')) continue;
+
           const nameLower = f.name.toLowerCase();
 
-          let matchedCategory: InputGitHubFile['matchedCategory'] | null = null;
-          let matchedLabel = '';
+          let matchedCategory: InputGitHubFile['matchedCategory'] = 'other';
+          let matchedLabel = 'Calendrier FFBC';
           let matchedProvince: string | undefined;
 
           if (nameLower.includes('route')) {
@@ -69,19 +71,17 @@ export const SubscriptionFeeds: React.FC<SubscriptionFeedsProps> = () => {
             }
           }
 
-          if (matchedCategory) {
-            matches.push({
-              name: f.name,
-              path: f.path,
-              size: f.size,
-              download_url: f.download_url,
-              html_url: f.html_url,
-              type: f.type,
-              matchedCategory,
-              matchedLabel,
-              province: matchedProvince,
-            });
-          }
+          matches.push({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            download_url: f.download_url,
+            html_url: f.html_url,
+            type: f.type,
+            matchedCategory,
+            matchedLabel,
+            province: matchedProvince,
+          });
         }
         setGitHubFiles(matches);
       }
@@ -194,6 +194,11 @@ export const SubscriptionFeeds: React.FC<SubscriptionFeedsProps> = () => {
                             📍
                           </div>
                         )}
+                        {file.matchedCategory === 'other' && (
+                          <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                            <Calendar className="w-5.5 h-5.5 text-blue-600" />
+                          </div>
+                        )}
                         <div>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">
                             {file.matchedLabel}
@@ -276,7 +281,7 @@ export const SubscriptionFeeds: React.FC<SubscriptionFeedsProps> = () => {
               <span>Dépôt source surveillé</span>
             </div>
             <p className="text-slate-700 font-medium leading-relaxed">
-              Aucun fichier portant le mot route, gravel, tout ou un nom de province n'est actuellement disponible.
+              Aucun fichier calendrier (.ics) n'est actuellement disponible dans le dépôt source.
             </p>
             <p className="text-slate-500 text-xs">
               Dès que vous déposez des fichiers <code>.ics</code> dans le répertoire de{' '}
@@ -288,7 +293,7 @@ export const SubscriptionFeeds: React.FC<SubscriptionFeedsProps> = () => {
               >
                 FabriziodelaRusta/Input_files
               </a>{' '}
-              (ex. <code>calendrier_route.ics</code>, <code>calendrier_gravel.ics</code>, <code>calendrier_tout.ics</code> ou <code>calendrier_hainaut.ics</code>), ils apparaîtront automatiquement ici.
+              (ex. <code>Calendrier_FFBC_01Nov-31Dec_2026.ics</code>, <code>calendrier_route.ics</code>...), ils apparaîtront automatiquement ici.
             </p>
           </div>
         )}
