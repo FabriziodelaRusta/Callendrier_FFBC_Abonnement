@@ -17,26 +17,33 @@ import React from 'react';
 export const CLUB_STRIPES_CONFIG = [
   {
     name: 'Bleu ciel',
-    color: '#38bdf8', // <-- MODIFIEZ ICI LA COULEUR BLEU CIEL
-    widthPx: 6,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
+    color: '#009ee2', // <-- MODIFIEZ ICI LA COULEUR BLEU CIEL
+    widthPx: 8,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
+  },
+    {
+    name: 'Blanc',
+    color: '#ffffff', // <-- MODIFIEZ ICI LA COULEUR BLANC
+    widthPx: 4,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
   },
   {
     name: 'Vert',
-    color: '#16a34a', // <-- MODIFIEZ ICI LA COULEUR VERT
-    widthPx: 6,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
+    color: '#5daf32', // <-- MODIFIEZ ICI LA COULEUR VERT
+    widthPx: 4,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
   },
-  {
-    name: 'Blanc',
-    color: '#ffffff', // <-- MODIFIEZ ICI LA COULEUR BLANC
-    widthPx: 6,       // <-- MODIFIEZ ICI LA LARGEUR (en pixels)
-  },
+
 ];
 
-export const ClubTricolorStripe: React.FC = () => {
+interface ClubTricolorStripeProps {
+  className?: string;
+}
+
+export const ClubTricolorStripe: React.FC<ClubTricolorStripeProps> = ({
+  className = 'h-9 sm:h-12',
+}) => {
   return (
-    <aside
+    <div
       aria-hidden="true"
-      className="fixed top-0 left-0 bottom-0 h-screen z-50 pointer-events-none flex flex-row shadow-xs select-none"
+      className={`flex flex-row shrink-0 rounded-xs overflow-hidden border border-slate-300/80 shadow-2xs select-none ${className}`}
       title="Couleurs du club"
     >
       {CLUB_STRIPES_CONFIG.map((stripe, index) => (
@@ -49,6 +56,6 @@ export const ClubTricolorStripe: React.FC = () => {
           className="h-full shrink-0"
         />
       ))}
-    </aside>
+    </div>
   );
 };

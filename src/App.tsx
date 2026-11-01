@@ -10,7 +10,6 @@ import { CustomCalendarGenerator } from './components/CustomCalendarGenerator';
 import { SubscriptionFeeds } from './components/SubscriptionFeeds';
 import { EventDetailModal } from './components/EventDetailModal';
 import { IphoneGuideModal } from './components/IphoneGuideModal';
-import { ClubTricolorStripe } from './components/ClubTricolorStripe';
 import { PROVINCES_ORDER, getSeasonBounds } from './utils/filterUtils';
 import fallbackDataset from './data/calendrier_ffbc.json';
 
@@ -111,10 +110,7 @@ export default function App() {
   }, [allEvents, criteria.periodEnabled, criteria.startDate, criteria.endDate]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 relative">
-      {/* Bande verticale tricolore aux couleurs du club (bleu ciel, vert, blanc) sur le bord droit */}
-      <ClubTricolorStripe />
-
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       {/* 1. Header with exact requested brand box - Randonnées tab removed */}
       <HeaderBrand
         onRefresh={handleRefresh}

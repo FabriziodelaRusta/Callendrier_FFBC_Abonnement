@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { RefreshCw, HelpCircle, Calendar, Sparkles } from 'lucide-react';
+import { ClubTricolorStripe } from './ClubTricolorStripe';
 
 interface HeaderBrandProps {
   onRefresh: () => void;
@@ -31,7 +32,10 @@ export const HeaderBrand: React.FC<HeaderBrandProps> = ({
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-xs">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-3">
         {/* Exact requested box from https://github.com/FabriziodelaRusta/Calendrier_FFBC_OSM */}
-        <div className="flex items-center gap-2.5 sm:gap-3.5 bg-slate-50/80 sm:bg-transparent p-1.5 sm:p-0 rounded-xl border sm:border-0 border-slate-200/70">
+        <div className="flex items-center gap-2 sm:gap-2.5 bg-slate-50/80 sm:bg-transparent p-1.5 sm:p-0 rounded-xl border sm:border-0 border-slate-200/70">
+          {/* Bandes aux couleurs du club sur le côté gauche du logo */}
+          <ClubTricolorStripe className="h-9 sm:h-12" />
+
           {/* Club RPA Logo */}
           <div className="w-9 h-11 sm:w-12 sm:h-14 shrink-0 flex items-center justify-center relative">
             {logoLoaded ? (
