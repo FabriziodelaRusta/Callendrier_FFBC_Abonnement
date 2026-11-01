@@ -5,17 +5,46 @@
 
 import { FFBCRando } from '../types';
 import postalCodesRaw from '../data/postalCodesBelgium.json';
+import belgianCitiesRaw from '../data/belgianCities.json';
 import { EVENT_COORDINATES } from '../data/coordinatesDb';
 
 export interface GeoPoint {
   lat: number;
   lng: number;
   name?: string;
+  city?: string;
+  zip?: string;
+}
+
+export interface GazetteerItem {
+  zip: string;
+  city: string;
+  label: string;
+  lat: number;
+  lng: number;
 }
 
 const belgianPostalCodes: Record<string, GeoPoint> = postalCodesRaw as Record<string, GeoPoint>;
 
-// Famous Belgian cities with their postal codes for quick selection
+interface RawCity {
+  zip: string;
+  city: string;
+  lat: number;
+  lng: number;
+}
+
+const allBelgianCities: RawCity[] = belgianCitiesRaw as RawCity[];
+
+// Normalize string for accent-insensitive search
+function normalizeSearch(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+// Popular Belgian cities for quick shortcuts
 export const POPULAR_BELGIAN_POSTAL_CODES = [
   { code: '7000', city: 'Mons', province: 'Hainaut' },
   { code: '6000', city: 'Charleroi', province: 'Hainaut' },
@@ -36,19 +65,35 @@ export const POPULAR_BELGIAN_POSTAL_CODES = [
 ] as const;
 
 /**
- * Looks up coordinates for a 4-digit Belgian postal code
+ * Looks up coordinates for a 4-digit Belgian postal code or city
  */
-export function getBelgianPostalCodeCoord(postalCode: string): GeoPoint | null {
-  if (!postalCode) return null;
-  const clean = postalCode.trim();
+export function getBelgianPostalCodeCoord(postalCodeOrCity: string): GeoPoint | null {
+  if (!postalCodeOrCity) return null;
+  const clean = postalCodeOrCity.trim();
+
+  // 1. Direct match by zip in belgianCities
+  const cityMatch = allBelgianCities.find(
+    (c) => c.zip === clean || normalizeSearch(c.city) === normalizeSearch(clean)
+  );
+  if (cityMatch) {
+    return {
+      lat: cityMatch.lat,
+      lng: cityMatch.lng,
+      name: cityMatch.city,
+      city: cityMatch.city,
+      zip: cityMatch.zip,
+    };
+  }
+
+  // 2. Direct match in postalCodesBelgium
   if (belgianPostalCodes[clean]) {
     return belgianPostalCodes[clean];
   }
-  // If user entered e.g. 7334 or 07334
   const numeric = String(parseInt(clean, 10));
   if (belgianPostalCodes[numeric]) {
     return belgianPostalCodes[numeric];
   }
+
   return null;
 }
 
@@ -78,7 +123,7 @@ export function calculateDistanceKm(
  * Resolves the geographic coordinates of an FFBC rando
  */
 export function getRandoCoordinates(rando: FFBCRando): GeoPoint | null {
-  // 1. Direct explicit coordinates on event
+  // 1. Direct coordinates on event
   if (typeof rando.latitude === 'number' && typeof rando.longitude === 'number' && rando.latitude !== 0) {
     return { lat: rando.latitude, lng: rando.longitude, name: rando.localite || undefined };
   }
@@ -88,25 +133,24 @@ export function getRandoCoordinates(rando: FFBCRando): GeoPoint | null {
     return EVENT_COORDINATES[rando.id];
   }
 
-  // 3. Belgian postal code
+  // 3. Belgian postal code or locality
   if (rando.code_postal) {
     const cp = rando.code_postal.trim();
-    if (belgianPostalCodes[cp]) {
-      return belgianPostalCodes[cp];
-    }
+    const coord = getBelgianPostalCodeCoord(cp);
+    if (coord) return coord;
   }
 
   return null;
 }
 
 /**
- * Computes distance in km from a Belgian postal code to the rando departure point
+ * Computes distance in km from a Belgian postal code / city to the rando departure point
  */
 export function getDistanceFromPostalCode(
   rando: FFBCRando,
-  originPostalCode: string
+  originPostalCodeOrCity: string
 ): number | null {
-  const origin = getBelgianPostalCodeCoord(originPostalCode);
+  const origin = getBelgianPostalCodeCoord(originPostalCodeOrCity);
   if (!origin) return null;
 
   const randoCoord = getRandoCoordinates(rando);
@@ -116,36 +160,72 @@ export function getDistanceFromPostalCode(
 }
 
 /**
- * Returns matching postal code suggestions for user input
+ * Gazetteer search: searches Belgian cities and postal codes with prefix & fuzzy matching
  */
-export function searchBelgianPostalCodes(query: string): Array<{ code: string; label: string }> {
-  if (!query || query.length < 2) return [];
-  const q = query.trim().toLowerCase();
+export function searchBelgianGazetteer(query: string): GazetteerItem[] {
+  if (!query || query.trim().length < 2) return [];
+  const q = normalizeSearch(query);
 
-  const results: Array<{ code: string; label: string }> = [];
+  const results: GazetteerItem[] = [];
+  const seen = new Set<string>();
 
-  // Match in popular cities first
-  for (const item of POPULAR_BELGIAN_POSTAL_CODES) {
-    if (item.code.startsWith(q) || item.city.toLowerCase().includes(q)) {
-      results.push({
-        code: item.code,
-        label: `${item.code} ${item.city} (${item.province})`,
-      });
-    }
-  }
-
-  // Match in general database if needed
-  if (results.length < 6) {
-    for (const [code, val] of Object.entries(belgianPostalCodes)) {
-      if (code.startsWith(q) && !results.some((r) => r.code === code)) {
+  // 1. Exact postal code prefix match
+  for (const c of allBelgianCities) {
+    if (c.zip.startsWith(q)) {
+      const key = `${c.zip}-${c.city}`;
+      if (!seen.has(key)) {
+        seen.add(key);
         results.push({
-          code,
-          label: `${code} ${val.name || ''}`.trim(),
+          zip: c.zip,
+          city: c.city,
+          label: `${c.zip} ${c.city}`,
+          lat: c.lat,
+          lng: c.lng,
         });
-        if (results.length >= 8) break;
       }
     }
+    if (results.length >= 10) break;
   }
 
-  return results.slice(0, 8);
+  // 2. City name starts with query
+  for (const c of allBelgianCities) {
+    const normCity = normalizeSearch(c.city);
+    if (normCity.startsWith(q)) {
+      const key = `${c.zip}-${c.city}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push({
+          zip: c.zip,
+          city: c.city,
+          label: `${c.city} (${c.zip})`,
+          lat: c.lat,
+          lng: c.lng,
+        });
+      }
+    }
+    if (results.length >= 12) break;
+  }
+
+  // 3. City name contains query (if still room)
+  if (results.length < 8) {
+    for (const c of allBelgianCities) {
+      const normCity = normalizeSearch(c.city);
+      if (normCity.includes(q) && !normCity.startsWith(q)) {
+        const key = `${c.zip}-${c.city}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          results.push({
+            zip: c.zip,
+            city: c.city,
+            label: `${c.city} (${c.zip})`,
+            lat: c.lat,
+            lng: c.lng,
+          });
+        }
+      }
+      if (results.length >= 12) break;
+    }
+  }
+
+  return results.slice(0, 10);
 }

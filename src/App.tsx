@@ -10,6 +10,7 @@ import { CustomCalendarGenerator } from './components/CustomCalendarGenerator';
 import { SubscriptionFeeds } from './components/SubscriptionFeeds';
 import { EventDetailModal } from './components/EventDetailModal';
 import { IphoneGuideModal } from './components/IphoneGuideModal';
+import { ClubTricolorStripe } from './components/ClubTricolorStripe';
 import { PROVINCES_ORDER, getSeasonBounds } from './utils/filterUtils';
 import fallbackDataset from './data/calendrier_ffbc.json';
 
@@ -34,6 +35,7 @@ export default function App() {
     },
     provinces: [...PROVINCES_ORDER],
     allProvinces: true,
+    periodEnabled: false,
     startDate: seasonBounds.todayStr,
     endDate: seasonBounds.seasonEndStr,
     distance: {
@@ -100,14 +102,19 @@ export default function App() {
   // Filtered count for header badge
   const filteredCount = useMemo(() => {
     return allEvents.filter((ev) => {
-      if (criteria.startDate && ev.date < criteria.startDate) return false;
-      if (criteria.endDate && ev.date > criteria.endDate) return false;
+      if (criteria.periodEnabled) {
+        if (criteria.startDate && ev.date < criteria.startDate) return false;
+        if (criteria.endDate && ev.date > criteria.endDate) return false;
+      }
       return true;
     }).length;
-  }, [allEvents, criteria.startDate, criteria.endDate]);
+  }, [allEvents, criteria.periodEnabled, criteria.startDate, criteria.endDate]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 relative">
+      {/* Bande verticale tricolore aux couleurs du club (bleu ciel, vert, blanc) sur le bord droit */}
+      <ClubTricolorStripe />
+
       {/* 1. Header with exact requested brand box - Randonnées tab removed */}
       <HeaderBrand
         onRefresh={handleRefresh}
@@ -152,7 +159,7 @@ export default function App() {
           v<sub id="version" className="font-bold text-blue-600">0.14</sub> — Fabrizio de la Rusta
         </div>
         <div className="text-[11px] text-slate-400">
-          Fédération Francophone Belge du Cyclotourisme (FFBC / Vélo Liberté) · Extraction : {extractionDate}
+          données en consultation libre provenant de Fédération Francophone Belge du Cyclotourisme (FFBC / Vélo Liberté) · Extraction : {extractionDate}
         </div>
       </footer>
 

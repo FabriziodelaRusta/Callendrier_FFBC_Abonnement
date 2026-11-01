@@ -3,12 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Download,
   Calendar,
-  Smartphone,
-  Copy,
   Check,
   CheckSquare,
   Square,
@@ -22,7 +20,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
-  Award,
+  X,
 } from 'lucide-react';
 import { FFBCRando, FilterCriteria, DisciplineType } from '../types';
 import {
@@ -38,6 +36,8 @@ import {
   getBelgianPostalCodeCoord,
   getDistanceFromPostalCode,
   POPULAR_BELGIAN_POSTAL_CODES,
+  searchBelgianGazetteer,
+  GazetteerItem,
 } from '../utils/postalCodeGeo';
 import { DisciplineIcon } from './DisciplineIcon';
 
@@ -54,16 +54,57 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
   onCriteriaChange,
   onSelectEvent,
 }) => {
-  const [copied, setCopied] = useState(false);
-  const [customName, setCustomName] = useState('Mon Calendrier FFBC');
+  const seasonBounds = useMemo(() => getSeasonBounds(), []);
+  const seasonYear = useMemo(() => {
+    const match = seasonBounds.seasonLabel.match(/\d{4}/);
+    return match ? match[0] : String(new Date().getFullYear());
+  }, [seasonBounds.seasonLabel]);
+
+  // Default calendar name: Mon_calendrier_FFBC_ suivi de l'année (saison)
+  const defaultCalName = `Mon_calendrier_FFBC_${seasonYear}`;
+  const [customName, setCustomName] = useState(defaultCalName);
+
+  // Gazetteer state with debounce
+  const [gazetteerQuery, setGazetteerQuery] = useState(
+    criteria.distance.cityName
+      ? `${criteria.distance.postalCode} ${criteria.distance.cityName}`
+      : criteria.distance.postalCode || ''
+  );
+  const [suggestions, setSuggestions] = useState<GazetteerItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const gazetteerRef = useRef<HTMLDivElement>(null);
+
   const [listSearch, setListSearch] = useState('');
   const [sortMode, setSortMode] = useState<'date' | 'distance'>('date');
   const [showEventsList, setShowEventsList] = useState(true);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const seasonBounds = useMemo(() => getSeasonBounds(), []);
+  // Debounced search for gazetteer (proposes city/postal code after 250ms)
+  useEffect(() => {
+    if (!gazetteerQuery || gazetteerQuery.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
-  // Recognized Belgian city for current postal code
+    const timer = setTimeout(() => {
+      const results = searchBelgianGazetteer(gazetteerQuery);
+      setSuggestions(results);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [gazetteerQuery]);
+
+  // Close suggestions dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (gazetteerRef.current && !gazetteerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Recognized Belgian city/coord for current postal code
   const currentPostalCoord = useMemo(() => {
     if (!criteria.distance.postalCode) return null;
     return getBelgianPostalCodeCoord(criteria.distance.postalCode);
@@ -104,20 +145,19 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
           }
         }
 
-        // 3. Date range filter
-        if (criteria.startDate && rando.date < criteria.startDate) {
-          return false;
-        }
-        if (criteria.endDate && rando.date > criteria.endDate) {
-          return false;
+        // 3. Date range filter (appliqué uniquement si le filtre période est activé)
+        if (criteria.periodEnabled) {
+          if (criteria.startDate && rando.date < criteria.startDate) {
+            return false;
+          }
+          if (criteria.endDate && rando.date > criteria.endDate) {
+            return false;
+          }
         }
 
-        // 4. Distance selection filter:
-        // "on entre un code postal belge et un km de recherche autour de ce code postal,
-        // si on choisi 50 on selectionnera toutes les randos dont le depart n'est pas a plus de 50 km"
+        // 4. Distance selection filter
         if (criteria.distance.enabled && criteria.distance.postalCode) {
           if (rando.computedDistanceKm === undefined) {
-            // No coordinates could be computed for this event
             return false;
           }
           if (rando.computedDistanceKm > criteria.distance.maxKm) {
@@ -232,13 +272,17 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
     });
   };
 
-  // Handlers for Dates
+  // Handlers for Dates & Period Filter
+  const handleTogglePeriodFilter = (enabled: boolean) => {
+    onCriteriaChange((prev) => ({ ...prev, periodEnabled: enabled }));
+  };
+
   const handleSetStartDate = (val: string) => {
-    onCriteriaChange((prev) => ({ ...prev, startDate: val }));
+    onCriteriaChange((prev) => ({ ...prev, startDate: val, periodEnabled: true }));
   };
 
   const handleSetEndDate = (val: string) => {
-    onCriteriaChange((prev) => ({ ...prev, endDate: val }));
+    onCriteriaChange((prev) => ({ ...prev, endDate: val, periodEnabled: true }));
   };
 
   const applyPresetSeason = () => {
@@ -246,6 +290,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
       ...prev,
       startDate: seasonBounds.todayStr,
       endDate: seasonBounds.seasonEndStr,
+      periodEnabled: true,
     }));
   };
 
@@ -254,6 +299,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
       ...prev,
       startDate: '2026-01-01',
       endDate: '2026-12-31',
+      periodEnabled: true,
     }));
   };
 
@@ -265,6 +311,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
       ...prev,
       startDate: start.toISOString().slice(0, 10),
       endDate: end.toISOString().slice(0, 10),
+      periodEnabled: true,
     }));
   };
 
@@ -279,13 +326,43 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
     }));
   };
 
-  const handleSetPostalCode = (code: string) => {
+  const handleSelectGazetteerItem = (item: GazetteerItem) => {
+    setGazetteerQuery(`${item.zip} ${item.city}`);
+    setShowSuggestions(false);
     onCriteriaChange((prev) => ({
       ...prev,
       distance: {
         ...prev.distance,
-        postalCode: code.trim(),
-        enabled: code.trim().length > 0 ? true : prev.distance.enabled,
+        postalCode: item.zip,
+        cityName: item.city,
+        enabled: true,
+      },
+    }));
+  };
+
+  const handleSelectPopularCity = (code: string, city: string) => {
+    setGazetteerQuery(`${code} ${city}`);
+    setShowSuggestions(false);
+    onCriteriaChange((prev) => ({
+      ...prev,
+      distance: {
+        ...prev.distance,
+        postalCode: code,
+        cityName: city,
+        enabled: true,
+      },
+    }));
+  };
+
+  const handleClearDistance = () => {
+    setGazetteerQuery('');
+    onCriteriaChange((prev) => ({
+      ...prev,
+      distance: {
+        ...prev.distance,
+        postalCode: '',
+        cityName: undefined,
+        enabled: false,
       },
     }));
   };
@@ -302,10 +379,13 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
   };
 
   const handleResetFilters = () => {
+    setGazetteerQuery('');
+    setCustomName(defaultCalName);
     onCriteriaChange(() => ({
       disciplines: { ROUTE: true, GRAVEL: true, MARCHE: true, VTT: true },
       provinces: [...PROVINCES_ORDER],
       allProvinces: true,
+      periodEnabled: false,
       startDate: seasonBounds.todayStr,
       endDate: seasonBounds.seasonEndStr,
       distance: {
@@ -319,58 +399,24 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
 
   // Download Action
   const handleDownloadIcs = () => {
+    const finalName = customName.trim() || defaultCalName;
+    const periodDesc = criteria.periodEnabled
+      ? ` du ${criteria.startDate} au ${criteria.endDate}`
+      : ' - Toutes les dates';
+    const distDesc = criteria.distance.enabled && criteria.distance.postalCode
+      ? ` - Rayon max ${criteria.distance.maxKm} km autour de ${criteria.distance.postalCode}`
+      : '';
     const icsContent = generateICalendar(matchingEvents, {
-      calendarName: customName || 'Calendrier FFBC Personnalisé',
-      description: `Calendrier FFBC personnalisé (${matchingEvents.length} événements sélectionnés du ${criteria.startDate} au ${criteria.endDate}${criteria.distance.enabled && criteria.distance.postalCode ? ` - Rayon max ${criteria.distance.maxKm} km autour de ${criteria.distance.postalCode}` : ''})`,
+      calendarName: finalName,
+      description: `Calendrier FFBC (${matchingEvents.length} événements sélectionnés${periodDesc}${distDesc})`,
     });
-    const filename = `${(customName || 'Calendrier_FFBC').replace(/\s+/g, '_')}.ics`;
+    const filename = `${finalName.replace(/\s+/g, '_')}.ics`;
     downloadIcsFile(filename, icsContent);
-  };
-
-  // Build Subscription URL
-  const subscriptionUrl = useMemo(() => {
-    const activeDiscs: string[] = [];
-    if (criteria.disciplines.ROUTE) activeDiscs.push('ROUTE');
-    if (criteria.disciplines.GRAVEL) activeDiscs.push('GRAVEL');
-    if (criteria.disciplines.MARCHE) activeDiscs.push('MARCHE');
-    if (criteria.disciplines.VTT) activeDiscs.push('VTT');
-
-    const params = new URLSearchParams();
-    if (activeDiscs.length > 0 && activeDiscs.length < 4) {
-      params.set('disciplines', activeDiscs.join(','));
-    }
-    if (!criteria.allProvinces && criteria.provinces.length > 0) {
-      params.set('provinces', criteria.provinces.join(','));
-    }
-    if (criteria.startDate) params.set('start', criteria.startDate);
-    if (criteria.endDate) params.set('end', criteria.endDate);
-    if (criteria.distance.enabled && criteria.distance.postalCode) {
-      params.set('postal_code', criteria.distance.postalCode);
-      params.set('radius_km', String(criteria.distance.maxKm));
-    }
-    if (customName) params.set('name', customName);
-
-    const queryString = params.toString();
-    return `${origin}/api/calendar.ics${queryString ? `?${queryString}` : ''}`;
-  }, [criteria, customName, origin]);
-
-  const webcalUrl = useMemo(() => {
-    return subscriptionUrl.replace(/^https?:\/\//i, 'webcal://');
-  }, [subscriptionUrl]);
-
-  const googleCalUrl = useMemo(() => {
-    return `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(subscriptionUrl)}`;
-  }, [subscriptionUrl]);
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(subscriptionUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
     <div className="space-y-6">
-      {/* Hero explanation */}
+      {/* Hero explanation - Exact requested text */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -382,7 +428,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
               Créez votre propre calendrier FFBC
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-3xl leading-relaxed">
-              Sélectionnez vos disciplines (Route, Gravel, Marche, VTT), la période de dates, vos provinces ou <strong>votre rayon kilométrique autour de votre code postal belge</strong> pour télécharger votre fichier <strong>.ics compatible iPhone</strong> ou vous abonner en direct.
+              Sélectionnez vos disciplines (Route, Gravel, Marche, VTT), la période, vos provinces ou le rayon kilométrique autour d'un code postal belge pour télécharger votre fichier .ics et mettre à jour votre calendrier
             </p>
           </div>
 
@@ -400,7 +446,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Criteria Form (2 spans) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* SECTION 1: Type d'événement (Checkbox Route, Gravel, Marche, VTT) with authentic SVG icons */}
+          {/* SECTION 1: Type d'événement (Disciplines) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -436,7 +482,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
               </div>
             </div>
 
-            {/* Disciplines Checkbox Cards with authentic cycling SVG icons */}
+            {/* Disciplines Cards with authentic cycling SVG icons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Route */}
               <label
@@ -468,7 +514,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </span>
               </label>
 
-              {/* Gravel - with correct flared gravel bike icon */}
+              {/* Gravel */}
               <label
                 className={`relative flex items-center justify-between p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
                   criteria.disciplines.GRAVEL
@@ -498,7 +544,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </span>
               </label>
 
-              {/* Marche - with walker icon */}
+              {/* Marche */}
               <label
                 className={`relative flex items-center justify-between p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
                   criteria.disciplines.MARCHE
@@ -528,7 +574,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </span>
               </label>
 
-              {/* VTT - with correct mountain bike MTB icon */}
+              {/* VTT */}
               <label
                 className={`relative flex items-center justify-between p-3.5 rounded-xl border-2 transition-all cursor-pointer ${
                   criteria.disciplines.VTT
@@ -560,7 +606,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
             </div>
           </div>
 
-          {/* SECTION 2: Selection par Distance (Code postal belge + rayon en km) */}
+          {/* SECTION 2: Selection par Distance (Code postal belge OU Ville avec recherche gazetteer) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -569,10 +615,10 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                    Sélection par distance (Code postal belge & Rayon)
+                    Sélection par distance (Code postal ou Ville belge & Rayon)
                   </h3>
                   <p className="text-[11px] sm:text-xs text-slate-500">
-                    Sélectionnez les randos dont le départ n'est pas à plus de X km de votre code postal
+                    Entrez un code postal ou une ville belge pour sélectionner les randos dans un rayon de X km
                   </p>
                 </div>
               </div>
@@ -591,32 +637,82 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
               </label>
             </div>
 
-            {/* Postal Code & Distance Inputs */}
+            {/* Inputs: Gazetteer search input & radius */}
             <div className={`space-y-4 transition-opacity ${criteria.distance.enabled ? 'opacity-100' : 'opacity-60'}`}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Postal Code input */}
-                <div className="space-y-1.5">
+                {/* Gazetteer Input (Ville ou Code postal) */}
+                <div className="space-y-1.5 relative" ref={gazetteerRef}>
                   <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
-                    <span>Code postal belge de départ :</span>
+                    <span>Code postal ou Ville belge :</span>
                     {currentPostalCoord && (
                       <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                         ✓ {currentPostalCoord.name || criteria.distance.postalCode}
                       </span>
                     )}
                   </label>
+
                   <div className="relative">
                     <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     <input
                       type="text"
-                      maxLength={4}
-                      value={criteria.distance.postalCode}
-                      onChange={(e) => handleSetPostalCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="Ex : 7000, 1000, 4000..."
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm font-bold text-slate-900 bg-white"
+                      value={gazetteerQuery}
+                      onFocus={() => setShowSuggestions(suggestions.length > 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGazetteerQuery(val);
+                        setShowSuggestions(true);
+                        // If user entered exactly 4 digits, resolve directly
+                        if (/^\d{4}$/.test(val.trim())) {
+                          onCriteriaChange((prev) => ({
+                            ...prev,
+                            distance: {
+                              ...prev.distance,
+                              postalCode: val.trim(),
+                              enabled: true,
+                            },
+                          }));
+                        }
+                      }}
+                      placeholder="Tapez un code postal ou nom de ville (ex : Mons, 7000, Namur...)"
+                      className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-xs sm:text-sm font-semibold text-slate-900 bg-white"
                     />
+                    {gazetteerQuery && (
+                      <button
+                        type="button"
+                        onClick={handleClearDistance}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Effacer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
+
+                  {/* Gazetteer Suggestions Dropdown */}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div className="absolute z-30 left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+                      {suggestions.map((item) => (
+                        <button
+                          key={`${item.zip}-${item.city}`}
+                          type="button"
+                          onClick={() => handleSelectGazetteerItem(item)}
+                          className="w-full text-left px-3.5 py-2 hover:bg-blue-50 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="font-bold text-slate-900">{item.city}</span>
+                            <span className="text-slate-500 font-mono">({item.zip})</span>
+                          </div>
+                          <span className="text-[10px] text-blue-700 font-semibold bg-blue-100 px-1.5 py-0.5 rounded">
+                            Choisir
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-slate-500">
-                    Entrez les 4 chiffres de votre code postal en Belgique (ex : 7000 Mons, 6000 Charleroi...)
+                    Recherche instantanée : tapez quelques lettres ou chiffres pour voir les communes belges
                   </p>
                 </div>
 
@@ -657,7 +753,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </div>
               </div>
 
-              {/* Popular Belgian Postal Codes Shortcuts */}
+              {/* Popular Belgian Cities Shortcuts */}
               <div className="pt-1">
                 <span className="text-[11px] text-slate-500 font-semibold mr-1.5">Villes fréquentes :</span>
                 <div className="inline-flex flex-wrap gap-1 mt-1">
@@ -665,7 +761,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                     <button
                       key={item.code}
                       type="button"
-                      onClick={() => handleSetPostalCode(item.code)}
+                      onClick={() => handleSelectPopularCity(item.code, item.city)}
                       className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
                         criteria.distance.postalCode === item.code
                           ? 'bg-blue-600 text-white font-bold'
@@ -683,7 +779,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                   <div className="flex items-center gap-2">
                     <Navigation className="w-4 h-4 text-blue-600 shrink-0" />
                     <span>
-                      Filtre actif : randos dont le départ est situé à moins de <strong>{criteria.distance.maxKm} km</strong> de <strong>{criteria.distance.postalCode}</strong>
+                      Filtre actif : randos dont le départ est situé à moins de <strong>{criteria.distance.maxKm} km</strong> de <strong>{criteria.distance.cityName || criteria.distance.postalCode}</strong>
                     </span>
                   </div>
                   <button
@@ -763,7 +859,7 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
             </div>
           </div>
 
-          {/* SECTION 4: Période (Deux champs date qui ouvrent deux calendriers) */}
+          {/* SECTION 4: Période (Deux champs date) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -780,75 +876,125 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 </div>
               </div>
 
-              <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-blue-600" />
-                <span className="hidden sm:inline">Règle de saison :</span>
-                <span className="text-blue-700 font-bold">{seasonBounds.seasonLabel}</span>
-              </div>
+              {/* Toggle switch for period filter */}
+              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={criteria.periodEnabled}
+                  onChange={(e) => handleTogglePeriodFilter(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className={criteria.periodEnabled ? 'text-blue-700' : 'text-slate-500'}>
+                  Activer le filtre période
+                </span>
+              </label>
             </div>
 
-            {/* Quick preset buttons */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium mr-1">Raccourcis :</span>
-              <button
-                type="button"
-                onClick={applyPresetSeason}
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors border border-blue-200 cursor-pointer"
-              >
-                Saison en cours (Aujourd'hui → 31 Oct)
-              </button>
-              <button
-                type="button"
-                onClick={applyPresetNext3Months}
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
-              >
-                3 prochains mois
-              </button>
-              <button
-                type="button"
-                onClick={applyPresetFull2026}
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
-              >
-                Année 2026 complète
-              </button>
-            </div>
+            {/* Inputs: Presets & Dates */}
+            <div className={`space-y-4 transition-opacity ${criteria.periodEnabled ? 'opacity-100' : 'opacity-60'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Quick preset buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium mr-1">Raccourcis :</span>
+                  <button
+                    type="button"
+                    onClick={applyPresetSeason}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors border border-blue-200 cursor-pointer"
+                  >
+                    Saison en cours (Aujourd'hui → 31 Oct)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyPresetNext3Months}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    3 prochains mois
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyPresetFull2026}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Année 2026 complète
+                  </button>
+                </div>
 
-            {/* Date Picker Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Date de début :
-                </label>
-                <input
-                  type="date"
-                  value={criteria.startDate}
-                  onChange={(e) => handleSetStartDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm font-semibold text-slate-900 bg-white"
-                />
-                <p className="text-[11px] text-slate-500">
-                  {formatDateFrench(criteria.startDate)}
-                </p>
+                <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="hidden sm:inline">Règle de saison :</span>
+                  <span className="text-blue-700 font-bold">{seasonBounds.seasonLabel}</span>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Date de fin :
-                </label>
-                <input
-                  type="date"
-                  value={criteria.endDate}
-                  onChange={(e) => handleSetEndDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm font-semibold text-slate-900 bg-white"
-                />
-                <p className="text-[11px] text-slate-500">
-                  {formatDateFrench(criteria.endDate)}
-                </p>
+              {/* Date Picker Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Date de début :
+                  </label>
+                  <input
+                    type="date"
+                    value={criteria.startDate}
+                    onChange={(e) => handleSetStartDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm font-semibold text-slate-900 bg-white"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    {formatDateFrench(criteria.startDate)}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Date de fin :
+                  </label>
+                  <input
+                    type="date"
+                    value={criteria.endDate}
+                    onChange={(e) => handleSetEndDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm font-semibold text-slate-900 bg-white"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    {formatDateFrench(criteria.endDate)}
+                  </p>
+                </div>
               </div>
+
+              {criteria.periodEnabled ? (
+                <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex items-center justify-between gap-2 text-xs text-blue-900">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>
+                      Filtre actif : randos du <strong>{formatDateFrench(criteria.startDate)}</strong> au <strong>{formatDateFrench(criteria.endDate)}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePeriodFilter(false)}
+                    className="text-[11px] text-blue-700 hover:underline font-semibold shrink-0 cursor-pointer"
+                  >
+                    Désactiver
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-100/80 rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span>Filtre période inactif : toutes les dates sont incluses sans restriction.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePeriodFilter(true)}
+                    className="text-[11px] text-blue-700 hover:underline font-semibold shrink-0 cursor-pointer"
+                  >
+                    Activer
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Right Column: Dynamic Action & Export Card (1 span) */}
+        {/* Right Column: Dynamic Action & Export Card (1 span) - Cleaned per user request */}
         <div className="space-y-6">
           <div className="bg-gradient-to-b from-slate-900 to-blue-950 text-white rounded-2xl p-5 sm:p-6 shadow-lg border border-slate-800 space-y-5 sticky top-20">
             {/* Counter */}
@@ -862,15 +1008,20 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
               </div>
               <p className="text-xs text-slate-300">
                 sur un total de {allEvents.length} randos FFBC
+                {criteria.periodEnabled && (
+                  <span className="block text-blue-200 mt-0.5">
+                    • Période : {formatDateFrench(criteria.startDate)} → {formatDateFrench(criteria.endDate)}
+                  </span>
+                )}
                 {criteria.distance.enabled && criteria.distance.postalCode && (
                   <span className="block text-blue-200 mt-0.5">
-                    • Rayon : ≤ {criteria.distance.maxKm} km de {criteria.distance.postalCode}
+                    • Rayon : ≤ {criteria.distance.maxKm} km de {criteria.distance.cityName || criteria.distance.postalCode}
                   </span>
                 )}
               </p>
             </div>
 
-            {/* Custom name input */}
+            {/* Custom name input (default: Mon_calendrier_FFBC_YYYY) */}
             <div className="space-y-1.5 pt-2 border-t border-white/10">
               <label className="block text-xs font-medium text-blue-200">
                 Nom de votre calendrier :
@@ -879,13 +1030,13 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 type="text"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                placeholder="Ex : Mes sorties FFBC"
+                placeholder={defaultCalName}
                 className="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-400"
               />
             </div>
 
-            {/* Primary Action Button: Download .ics (iPhone compatible) */}
-            <div className="space-y-2.5 pt-1">
+            {/* Primary Action Button: Download .ics */}
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={handleDownloadIcs}
@@ -895,57 +1046,17 @@ export const CustomCalendarGenerator: React.FC<CustomCalendarGeneratorProps> = (
                 <Download className="w-5 h-5 text-white" />
                 <span>Télécharger le fichier .ics</span>
               </button>
-              <p className="text-[11px] text-center text-blue-200 flex items-center justify-center gap-1">
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>100% compatible iPhone, Mac, Android & PC</span>
-              </p>
             </div>
 
-            {/* Secondary Actions */}
-            <div className="space-y-2 pt-3 border-t border-white/10">
-              <div className="text-xs font-semibold text-slate-300">
-                Ou abonnez-vous en direct :
-              </div>
-
-              {/* Webcal 1-click */}
-              <a
-                href={webcalUrl}
-                className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2"
-                title="S'abonner sur Apple Calendar / iPhone"
-              >
-                <Smartphone className="w-4 h-4 text-blue-400" />
-                <span>S'abonner sur iPhone (Webcal)</span>
-              </a>
-
-              {/* Google Cal */}
-              <a
-                href={googleCalUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2"
-                title="Ajouter dans Google Calendar"
-              >
-                <Calendar className="w-4 h-4 text-amber-400" />
-                <span>Ajouter à Google Calendar</span>
-              </a>
-
-              {/* Copy URL */}
+            {/* Button to view/hide list */}
+            <div className="pt-2 border-t border-white/10">
               <button
                 type="button"
-                onClick={handleCopyLink}
-                className="w-full py-2 px-3 rounded-xl text-[11px] font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => setShowEventsList(!showEventsList)}
+                className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 font-semibold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-300 font-semibold">Lien copié dans le presse-papier !</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copier l'URL d'abonnement</span>
-                  </>
-                )}
+                <span>{showEventsList ? 'Masquer la liste des randonnées' : `Consulter les ${matchingEvents.length} randos sélectionnées`}</span>
+                {showEventsList ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
             </div>
           </div>

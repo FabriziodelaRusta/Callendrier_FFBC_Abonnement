@@ -53,6 +53,8 @@ export interface CalendarDataset {
 export interface DistanceFilter {
   enabled: boolean;
   postalCode: string; // 4-digit Belgian postal code (e.g. 7000)
+  cityName?: string; // name of the city/locality (e.g. Mons)
+  searchTerm?: string; // raw input from user (e.g. "Mons" or "7000")
   maxKm: number; // radius in km (e.g. 50 km)
 }
 
@@ -65,6 +67,7 @@ export interface FilterCriteria {
   };
   provinces: string[]; // selected province names
   allProvinces: boolean;
+  periodEnabled: boolean;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   distance: DistanceFilter;

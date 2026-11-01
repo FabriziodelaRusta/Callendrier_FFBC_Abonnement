@@ -60,7 +60,7 @@ export const HeaderBrand: React.FC<HeaderBrandProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm font-bold text-blue-600 leading-tight">
-              Abonnement
+              Abonnez-vous
             </p>
             <div className="text-[10px] sm:text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
               <span className="font-semibold text-slate-700">{itemsCount}</span>
